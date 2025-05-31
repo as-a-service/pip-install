@@ -1,0 +1,12 @@
+{
+  "name": "example-project",
+  "version": "1.0.0",
+  "description": "Example project for fast-npm-install service.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}

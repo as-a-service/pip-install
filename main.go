@@ -36,16 +36,51 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var packageFiles PackageFiles
-	// Limit request body size to prevent abuse
-	err := json.NewDecoder(io.LimitReader(r.Body, 10*1024*1024)).Decode(&packageFiles) // 10MB limit
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
-		return
+
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Handle multipart form upload
+		err := r.ParseMultipartForm(20 << 20) // 20MB max memory
+		if err != nil {
+			http.Error(w, "Error parsing multipart form: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		pkgFile, _, err := r.FormFile("package.json")
+		if err != nil {
+			http.Error(w, "Missing package.json file in form-data", http.StatusBadRequest)
+			return
+		}
+		defer pkgFile.Close()
+		pkgBytes, err := io.ReadAll(pkgFile)
+		if err != nil {
+			http.Error(w, "Error reading package.json: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		packageFiles.PackageJSON = string(pkgBytes)
+
+		lockFile, _, err := r.FormFile("package-lock.json")
+		if err == nil {
+			defer lockFile.Close()
+			lockBytes, err := io.ReadAll(lockFile)
+			if err != nil {
+				http.Error(w, "Error reading package-lock.json: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			packageFiles.PackageLockJSON = string(lockBytes)
+		}
+	} else {
+		// Fallback: JSON body
+		// Limit request body size to prevent abuse
+		err := json.NewDecoder(io.LimitReader(r.Body, 10*1024*1024)).Decode(&packageFiles) // 10MB limit
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
 	}
-	defer r.Body.Close()
 
 	if packageFiles.PackageJSON == "" {
-		http.Error(w, "Missing package.json in request body", http.StatusBadRequest)
+		http.Error(w, "Missing package.json in request", http.StatusBadRequest)
 		return
 	}
 

@@ -37,17 +37,28 @@ gcloud run services proxy npm-install \
 
 ## Usage
 
-Send a POST request to `/install` with a JSON body containing your `package.json` content and optionally your `package-lock.json` content.
+You can now send a POST request to `/install` using either a JSON body (as before) or by uploading files directly using `multipart/form-data`.
 
-Example request:
+### Using local files (recommended)
+
+```bash
+curl -X POST http://localhost:8080/install \
+  -F "package.json=@example/package.json" \
+  -F "package-lock.json=@example/package-lock.json" \
+  --output node_modules.zip
+```
+
+The `package-lock.json` field is optional.
+
+### Using JSON body
+
 ```bash
 curl -X POST http://localhost:8080/install \
   -H "Content-Type: application/json" \
   -d '{
-    "package.json": "{\"name\":\"test-package\",\"dependencies\":{\"express\":\"^4.17.1\"}}",
-    "package-lock.json": ""
+    "package.json": "{\"name\":\"test-package\",\"dependencies\":{\"express\":\"^4.17.1\"}}"
   }' \
-  --output npm_build.zip
+  --output node_modules.zip
 ```
 
 The server will:
