@@ -6,12 +6,12 @@ A Go server that performs npm installations and returns a zip file containing th
 
 Build the Docker image:
 ```bash
-docker build . -t fast-npm-build
+docker build . -t npm-install
 ```
 
 Run the container:
 ```bash
-docker run -p 8080:8080 fast-npm-build
+docker run -p 8080:8080 npm-install
 ```
 
 ## Deploying to Google Cloud Run and proxying locally
@@ -19,7 +19,7 @@ docker run -p 8080:8080 fast-npm-build
 Deploy:
 
 ```bash
-gcloud run deploy fast-npm-build \
+gcloud run deploy npm-install \
   --source . \
   --cpu 8 \
   --memory 32Gi \
@@ -30,7 +30,7 @@ gcloud run deploy fast-npm-build \
 Expose the service locally using Cloud Run's local proxy:
 
 ```bash
-gcloud run services proxy fast-npm-build \
+gcloud run services proxy npm-install \
   --region europe-west1 \
   --port 8080
 ```
