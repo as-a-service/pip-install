@@ -1,3 +1,5 @@
+// Accepts requirements.txt and optional constraints.txt
+// Runs pip install and zips the resulting site-packages directory
 package main
 
 import (
@@ -14,11 +16,15 @@ import (
 	"strings"
 )
 
-const workDirPrefix = "npm_work_"
+const workDirPrefix = "pip_work_"
 
-type PackageFiles struct {
-	PackageJSON      string `json:"package.json"`
-	PackageLockJSON string `json:"package-lock.json,omitempty"`
+// Accept requirements.txt and optional constraints.txt
+// constraints.txt is optional and used for reproducible installs
+// The output is a zip of the installed site-packages
+
+type PythonFiles struct {
+	RequirementsTXT string `json:"requirements.txt"`
+	ConstraintsTXT  string `json:"constraints.txt,omitempty"`
 }
 
 func main() {
@@ -35,7 +41,7 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var packageFiles PackageFiles
+	var pyFiles PythonFiles
 
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -45,33 +51,32 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error parsing multipart form: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		pkgFile, _, err := r.FormFile("package.json")
+		reqFile, _, err := r.FormFile("requirements.txt")
 		if err != nil {
-			http.Error(w, "Missing package.json file in form-data", http.StatusBadRequest)
+			http.Error(w, "Missing requirements.txt file in form-data", http.StatusBadRequest)
 			return
 		}
-		defer pkgFile.Close()
-		pkgBytes, err := io.ReadAll(pkgFile)
+		defer reqFile.Close()
+		reqBytes, err := io.ReadAll(reqFile)
 		if err != nil {
-			http.Error(w, "Error reading package.json: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "Error reading requirements.txt: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		packageFiles.PackageJSON = string(pkgBytes)
+		pyFiles.RequirementsTXT = string(reqBytes)
 
-		lockFile, _, err := r.FormFile("package-lock.json")
+		conFile, _, err := r.FormFile("constraints.txt")
 		if err == nil {
-			defer lockFile.Close()
-			lockBytes, err := io.ReadAll(lockFile)
+			defer conFile.Close()
+			conBytes, err := io.ReadAll(conFile)
 			if err != nil {
-				http.Error(w, "Error reading package-lock.json: "+err.Error(), http.StatusBadRequest)
+				http.Error(w, "Error reading constraints.txt: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-			packageFiles.PackageLockJSON = string(lockBytes)
+			pyFiles.ConstraintsTXT = string(conBytes)
 		}
 	} else {
 		// Fallback: JSON body
-		// Limit request body size to prevent abuse
-		err := json.NewDecoder(io.LimitReader(r.Body, 10*1024*1024)).Decode(&packageFiles) // 10MB limit
+		err := json.NewDecoder(io.LimitReader(r.Body, 10*1024*1024)).Decode(&pyFiles) // 10MB limit
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 			return
@@ -79,8 +84,8 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 	}
 
-	if packageFiles.PackageJSON == "" {
-		http.Error(w, "Missing package.json in request", http.StatusBadRequest)
+	if pyFiles.RequirementsTXT == "" {
+		http.Error(w, "Missing requirements.txt in request", http.StatusBadRequest)
 		return
 	}
 
@@ -92,98 +97,60 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpDir) // Clean up afterwards
 
-	// Write package.json
-	if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(packageFiles.PackageJSON), 0644); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to write package.json: %v", err), http.StatusInternalServerError)
+	// Write requirements.txt
+	if err := os.WriteFile(filepath.Join(tmpDir, "requirements.txt"), []byte(pyFiles.RequirementsTXT), 0644); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to write requirements.txt: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	npmCommand := "install"
-	// Write package-lock.json if provided and use 'npm ci'
-	if packageFiles.PackageLockJSON != "" {
-		if err := os.WriteFile(filepath.Join(tmpDir, "package-lock.json"), []byte(packageFiles.PackageLockJSON), 0644); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write package-lock.json: %v", err), http.StatusInternalServerError)
+	pipArgs := []string{"install", "-r", "requirements.txt", "--target", "site-packages"}
+	if pyFiles.ConstraintsTXT != "" {
+		if err := os.WriteFile(filepath.Join(tmpDir, "constraints.txt"), []byte(pyFiles.ConstraintsTXT), 0644); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to write constraints.txt: %v", err), http.StatusInternalServerError)
 			return
 		}
-		npmCommand = "ci"
+		pipArgs = append(pipArgs, "-c", "constraints.txt")
 	}
 
-	// Run npm install or npm ci
-	cmd := exec.Command("npm", npmCommand)
+	// Run pip install
+	cmd := exec.Command("pip", pipArgs...)
 	cmd.Dir = tmpDir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		log.Printf("npm %s failed in %s. Stderr: %s", npmCommand, tmpDir, stderr.String())
-		http.Error(w, fmt.Sprintf("npm %s failed: %v\nStderr: %s", npmCommand, err, stderr.String()), http.StatusInternalServerError)
+		log.Printf("pip install failed in %s. Stderr: %s", tmpDir, stderr.String())
+		http.Error(w, fmt.Sprintf("pip install failed: %v\nStderr: %s", err, stderr.String()), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("npm %s completed successfully in %s", npmCommand, tmpDir)
+	log.Printf("pip install completed successfully in %s", tmpDir)
 
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"npm_build.zip\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"python_packages.zip\"")
 
 	zipWriter := zip.NewWriter(w)
 	defer zipWriter.Close()
 
-	// Remove package.json and package-lock.json from zip
-	filesToZip := []string{}
-
-	// Add package.json and package-lock.json to zip
-	for _, file := range filesToZip {
-		filePath := filepath.Join(tmpDir, file)
-		if _, err := os.Stat(filePath); err == nil {
-			f, err := zipWriter.Create(file)
-			if err != nil {
-				log.Printf("Failed to create zip entry for %s: %v", file, err)
-				// Don't send http.Error here as headers might have been written
-				return
-			}
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				log.Printf("Failed to read %s for zipping: %v", file, err)
-				return
-			}
-			_, err = f.Write(content)
-			if err != nil {
-				log.Printf("Failed to write %s to zip: %v", file, err)
-				return
-			}
-		}
-	}
-
-	// Add node_modules to zip
-	nodeModulesPath := filepath.Join(tmpDir, "node_modules")
-	err = filepath.Walk(nodeModulesPath, func(path string, info os.FileInfo, err error) error {
+	// Add site-packages to zip
+	sitePackagesPath := filepath.Join(tmpDir, "site-packages")
+	err = filepath.Walk(sitePackagesPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
-		// Create a proper path for the zip file
 		relPath, err := filepath.Rel(tmpDir, path)
 		if err != nil {
 			return err
 		}
-
-		// Skip if it's the root node_modules directory itself
 		if relPath == "." || relPath == ".." {
 			return nil
 		}
-		
-		// Ensure paths in zip are relative and use forward slashes
 		zipPath := filepath.ToSlash(relPath)
-
-
 		if info.IsDir() {
-			// For directories, create a header, but don't write content directly
-			// Some zip utilities might require explicit directory entries
 			if !strings.HasSuffix(zipPath, "/") {
 				zipPath += "/"
 			}
 			_, err = zipWriter.CreateHeader(&zip.FileHeader{
 				Name:   zipPath,
-				Method: zip.Store, // Store (no compression) for directories or Deflate
-				// Set other metadata if needed, like ModifiedDate
+				Method: zip.Store,
 			})
 			if err != nil {
 				log.Printf("Failed to create directory header in zip for %s: %v", zipPath, err)
@@ -191,23 +158,17 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 			}
 			return nil
 		}
-
-		// Create a file entry in the zip
 		fileInZip, err := zipWriter.Create(zipPath)
 		if err != nil {
 			log.Printf("Failed to create zip entry for %s: %v", path, err)
 			return err
 		}
-
-		// Open the file to be zipped
 		fileToZip, err := os.Open(path)
 		if err != nil {
 			log.Printf("Failed to open file %s for zipping: %v", path, err)
 			return err
 		}
 		defer fileToZip.Close()
-
-		// Copy the file content to the zip entry
 		_, err = io.Copy(fileInZip, fileToZip)
 		if err != nil {
 			log.Printf("Failed to copy file %s to zip: %v", path, err)
@@ -217,10 +178,8 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		// Log error, but response might have already started streaming
-		log.Printf("Error walking node_modules path %s: %v", nodeModulesPath, err)
-		// Avoid writing http.Error if headers are already sent
-		if w.Header().Get("Content-Type") == "" { // A bit of a heuristic
+		log.Printf("Error walking site-packages path %s: %v", sitePackagesPath, err)
+		if w.Header().Get("Content-Type") == "" {
 			http.Error(w, fmt.Sprintf("Error zipping files: %v", err), http.StatusInternalServerError)
 		}
 		return

@@ -1,17 +1,17 @@
-# `npm install` as a service
+# `pip install` as a service
 
-A server that performs `npm install` and returns a zip file containing the `node_modules`.
+A server that performs `pip install` and returns a zip file containing the installed Python packages (site-packages).
 
 ## Building and Running with Docker
 
 Build the Docker image:
 ```bash
-docker build . -t npm-install
+docker build . -t pip-install
 ```
 
 Run the container:
 ```bash
-docker run -p 8080:8080 npm-install
+docker run -p 8080:8080 pip-install
 ```
 
 ## Deploying to Google Cloud Run and proxying locally
@@ -19,7 +19,7 @@ docker run -p 8080:8080 npm-install
 Deploy:
 
 ```bash
-gcloud run deploy npm-install \
+gcloud run deploy pip-install \
   --source . \
   --cpu 8 \
   --memory 32Gi \
@@ -30,7 +30,7 @@ gcloud run deploy npm-install \
 Expose the service locally using Cloud Run's local proxy:
 
 ```bash
-gcloud run services proxy npm-install \
+gcloud run services proxy pip-install \
   --region europe-west1 \
   --port 8080
 ```
@@ -43,12 +43,11 @@ You can now send a POST request to `/install` using either a `JSON` body or by u
 
 ```bash
 curl -X POST http://localhost:8080/install \
-  -F "package.json=@example/package.json" \
-  -F "package-lock.json=@example/package-lock.json" \
-  --output node_modules.zip
+  -F "requirements.txt=@example/requirements.txt" \
+  --output python_packages.zip
 ```
 
-The `package-lock.json` field is optional.
+The `constraints.txt` field is optional.
 
 ### Using JSON body
 
@@ -56,14 +55,14 @@ The `package-lock.json` field is optional.
 curl -X POST http://localhost:8080/install \
   -H "Content-Type: application/json" \
   -d '{
-    "package.json": "{\"name\":\"test-package\",\"dependencies\":{\"express\":\"^4.17.1\"}}"
+    "requirements.txt": "flask==2.2.5\nrequests==2.31.0"
   }' \
-  --output node_modules.zip
+  --output python_packages.zip
 ```
 
 The server will:
 1. Create a temporary directory
-2. Write the package files
-3. Run `npm install` (or `npm ci` if package-lock.json is provided)
-4. Zip the resulting `node_modules` directory
+2. Write the requirements files
+3. Run `pip install` (with constraints if provided)
+4. Zip the resulting `site-packages` directory
 5. Stream the zip file back in the response
