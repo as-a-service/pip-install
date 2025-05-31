@@ -14,6 +14,27 @@ Run the container:
 docker run -p 8080:8080 fast-npm-build
 ```
 
+## Deploying to Google Cloud Run and proxying locally
+
+Deploy:
+
+```bash
+gcloud run deploy fast-npm-build \
+  --source . \
+  --cpu 8 \
+  --memory 32Gi \
+  --no-allow-unauthenticated \
+  --region europe-west1
+```
+
+Expose the service locally using Cloud Run's local proxy:
+
+```bash
+gcloud run services proxy fast-npm-build \
+  --region europe-west1 \
+  --port 8080
+```
+
 ## Usage
 
 Send a POST request to `/install` with a JSON body containing your `package.json` content and optionally your `package-lock.json` content.
