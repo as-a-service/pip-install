@@ -1,6 +1,6 @@
-# Fast NPM Install
+# `npm install` as a service
 
-A Go server that performs npm installations and returns a zip file containing the node_modules and package files.
+A server that performs `npm install` and returns a zip file containing the `node_modules`.
 
 ## Building and Running with Docker
 
