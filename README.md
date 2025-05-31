@@ -37,7 +37,7 @@ gcloud run services proxy npm-install \
 
 ## Usage
 
-You can now send a POST request to `/install` using either a JSON body (as before) or by uploading files directly using `multipart/form-data`.
+You can now send a POST request to `/install` using either a `JSON` body or by uploading files using `multipart/form-data`.
 
 ### Using local files (recommended)
 
