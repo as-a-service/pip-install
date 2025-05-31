@@ -91,10 +91,8 @@ func handleInstall(w http.ResponseWriter, r *http.Request) {
 	zipWriter := zip.NewWriter(w)
 	defer zipWriter.Close()
 
-	filesToZip := []string{"package.json"}
-	if packageFiles.PackageLockJSON != "" {
-		filesToZip = append(filesToZip, "package-lock.json")
-	}
+	// Remove package.json and package-lock.json from zip
+	filesToZip := []string{}
 
 	// Add package.json and package-lock.json to zip
 	for _, file := range filesToZip {

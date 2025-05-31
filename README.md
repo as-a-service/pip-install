@@ -54,10 +54,5 @@ The server will:
 1. Create a temporary directory
 2. Write the package files
 3. Run `npm install` (or `npm ci` if package-lock.json is provided)
-4. Zip the resulting `node_modules` directory along with the package files
+4. Zip the resulting `node_modules` directory
 5. Stream the zip file back in the response
-
-The response will be a zip file containing:
-- `node_modules/`
-- `package.json`
-- `package-lock.json` (if provided in the request)
